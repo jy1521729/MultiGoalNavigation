@@ -12,7 +12,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ActionConfig.msg"
   "msg/VoiceConfig.msg"
   "srv/NavigationExecute.srv"
-  "srv/AddTwoInts.srv"
   DEPENDENCIES std_msgs
 )
 
