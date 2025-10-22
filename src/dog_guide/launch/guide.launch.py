@@ -11,8 +11,6 @@ def generate_launch_description():
     pkg_self = get_package_share_directory('dog_guide')
 
     map_file = LaunchConfiguration('map')
-    waypoints_file = LaunchConfiguration('waypoints', default=os.path.join(pkg_self, 'params', 'waypoints.yaml'))
-    sounds_dir = os.path.join(pkg_self, 'sounds')
 
     use_sim_time = LaunchConfiguration('use_sim_time', default='True')
 
@@ -24,14 +22,6 @@ def generate_launch_description():
             launch_arguments={'map': map_file,
                               'params_file': os.path.join(pkg_self, 'params', 'nav2_params.yaml'),
                               'use_sim_time': use_sim_time}.items()),
-
-        # 自定义 BT 节点加载器
-        Node(package='dog_guide',
-             executable='bt_creater',
-             parameters=[{'waypoints_file': waypoints_file,
-                          'sounds_dir': sounds_dir,
-                          'use_sim_time': use_sim_time}],
-             output='screen'),
 
         # TF发布器
         Node(

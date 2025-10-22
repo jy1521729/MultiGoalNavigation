@@ -1,17 +1,13 @@
 #!/bin/bash
 
-waypoints=''
-if [ -n "$1" ]; then
-  waypoints='waypoints:='$1
-fi
-
+waypoints=${1:-'waypoints'}
 map_yaml='/home/wya/projects/slam/mapping/maps/map002.yaml'
 map_pcd='/home/wya/projects/slam/mapping/maps/map002_scans_voxel.pcd'
 
 echo 'params: '${waypoints}
 
 {
-gnome-terminal --tab -t "dog_guide" -- bash -c "ros2 launch dog_guide guide.launch.py map:=${map_yaml} ${waypoints};exec bash"
+gnome-terminal --tab -t "nav2" -- bash -c "ros2 launch dog_guide guide.launch.py map:=${map_yaml};exec bash"
 }&
 
 sleep 1s
@@ -36,4 +32,10 @@ sleep 5s
 
 {
 gnome-terminal --tab -t "pub_initial_pose" -- bash -c "ros2 run fast_lio_localization publish_initial_pose.py 0 0 0 0 0 0;exec bash"
+}&
+
+sleep 1s
+
+{
+gnome-terminal --tab -t "btree" -- bash -c "ros2 run dog_guide bt_creater --ros-args -p waypoints_file:=${waypoints};exec bash"
 }&

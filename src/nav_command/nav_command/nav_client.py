@@ -46,7 +46,7 @@ class NavClient(Node):
         wp2.voice.play_delay = 2.0
 
         wp3 = Waypoint()
-        wp3.x, wp3.y, wp3.yaw = 4.0, -10.0, 3.14
+        wp3.x, wp3.y, wp3.yaw = 4.0, -10.0, -1.57
         wp3.voice.voice_id = 'v3'
         wp3.voice.voice_content = '这是第 3 个点'
         wp3.voice.play_delay = 4.0

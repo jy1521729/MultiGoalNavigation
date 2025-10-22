@@ -19,6 +19,9 @@ class PlaySpeech(py_trees.behaviour.Behaviour):
         play_delay = self.file['play_delay']
         self.node.get_logger().info(f"voice_id: {voice_id}, play_delay: {play_delay}s")
         time.sleep(play_delay)
+        # 阻塞式播放音频
+        subprocess.run(['play', self.file['file_path']], 
+                       stdout=subprocess.DEVNULL, check=False)
         for i in range(3):
             self.node.get_logger().info(f"sound playing: {self.file['voice_content']}")
             time.sleep(1)
@@ -76,26 +79,36 @@ def pub_status(pub, status: str):
     msg.data = status
     pub.publish(msg)
 
-import yaml
+def load_waypoints(waypoints_file: str, node: Node):
+    if not waypoints_file:
+        node.get_logger().error('waypoints_file 参数为空！')
+        return
+    if not os.path.exists(waypoints_file):
+        node.get_logger().error(f'waypoints_file 文件不存在：{waypoints_file}')
+        return
+    else:
+        node.get_logger().info(f'load waypoints_file: {waypoints_file}')
+    try:
+        import yaml
+        with open(waypoints_file, 'r', encoding='utf-8') as f:
+            waypoints = yaml.safe_load(f)['waypoints']
+    except Exception as e:
+        node.get_logger().error(f'加载 waypoints_file 出错：{type(e).__name__} - {str(e)}')
+        return None
+    return waypoints
+
 def main():
     rclpy.init()
     node = rclpy.create_node('temp_for_bt')   # 临时节点，仅用来读参+创建树
     node.declare_parameter('waypoints_file', '')
     waypoints_file = node.get_parameter('waypoints_file').value
-    if not waypoints_file:
-        node.get_logger().error('waypoints_file 参数为空！')
+    waypoints = load_waypoints(waypoints_file, node)
+    if not waypoints:
+        node.get_logger().error('waypoints 为空，请检查 waypoints_file')
         return
-    
+
     pub = node.create_publisher(String, "/bt_status", 10)
     pub_status(pub, "running")
-
-    # 手动读 YAML
-    with open(waypoints_file, 'r', encoding='utf-8') as f:
-        waypoints = yaml.safe_load(f)['waypoints']
-
-    if not waypoints:
-        node.get_logger().error('waypoints 参数为空，检查 waypoints_file 是否加载')
-        return
 
     # 用前面写的 create_tree 拼出行为树
     tree = create_full_tree(waypoints, node)

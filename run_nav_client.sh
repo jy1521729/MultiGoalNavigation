@@ -1,7 +1,8 @@
 #!/bin/bash
 
 api_id=${1:-1001}          # 取第一个参数，缺省 1001
-[[ $api_id =~ ^100[123]$ ]] || { echo "invalid params"; exit 1; }
+[[ $api_id =~ ^(10[0-2][1-5])$ ]] || { echo "invalid params"; exit 1; }
+echo "api_id: ${api_id}"
 
 source install/setup.bash
 export ROS_DOMAIN_ID=0
