@@ -5,7 +5,8 @@
 #   ./launch_all.sh 2 wp.yaml    # 启动 btree（必须带 waypoints 文件）
 set -euo pipefail
 
-map_yaml='/home/ubuntu/code/xjy/xjy_work/datasets/maps/house_map.yaml'
+map_yaml='/home/wya/projects/slam/mapping/maps/map002.yaml'
+map_pcd='/home/wya/projects/slam/mapping/maps/map002_scans_voxel.pcd'
 db=/tmp/run_test.name.pid
 
 launch(){
@@ -21,10 +22,17 @@ exec bash" &
 # 不带参数：启动全部
 if [[ $# -eq 0 ]]; then
   > "$db"   # 清空旧记录
-  launch rviz \
-    "rviz2 -d \$(ros2 pkg prefix nav2_bringup)/share/nav2_bringup/rviz/nav2_default_view.rviz"
   launch nav2 \
     "ros2 launch dog_guide guide.launch.py map:=$map_yaml"
+  sleep 0.5s
+  launch dog_control \
+    "ros2 run dog_guide dog_controller"
+  sleep 0.5s
+  launch livox_lidar \
+    "ros2 launch livox_ros_driver2 msg_MID360_launch.py"
+  sleep 1s
+  launch fast-lio2-loc \
+    "ros2 launch fast_lio_localization localization.launch.py pcd_map_topic:=cloud_pcd map:=${map_pcd}"
 
   echo "已启动节点，记录文件：$db"
   exit 0

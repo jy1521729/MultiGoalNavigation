@@ -29,16 +29,7 @@ class NavServer(Node):
         try:
             match req.api_id:
                 case 1001:
-                    if len(req.waypoints) > 0:
-                        self.get_logger().info(f'路线 {req.route_name}，共 {len(req.waypoints)} 个航点')
-                        waypoints_file = '/tmp/waypoints.yaml'
-                        write_waypoints(self, req, waypoints_file)
-                        return self.handle_start_navigation(waypoints_file, response)
-                    else:
-                        self.get_logger().info('导航失败：航点列表为空')
-                        response.response.success = False
-                        response.response.status_code = "Error: Empty waypoints"
-                        return response
+                    return self.handle_start_navigation(request, response)
                 case 1002:
                     self.get_logger().info('紧急停止！')
                     return self.handle_stop_navigation(request, response)
@@ -78,12 +69,23 @@ class NavServer(Node):
         if msg.data == "finished":
             self.current_status['status'] = "completed"
 
-    def handle_start_navigation(self, waypoints_file: str, response):
+    def handle_start_navigation(self, request, response):
         """Handle start navigation command"""
         if self.current_status['status'] not in ["starting"]:
             response.response.success = False
             response.response.status_code = f"Nodes not launched OR Navigation already in progress."
             self.get_logger().info("Nodes not launched OR Navigation already in progress.")
+            return response
+
+        req = request.request
+        if len(req.waypoints) > 0:
+            self.get_logger().info(f'路线 {req.route_name}，共 {len(req.waypoints)} 个航点')
+            waypoints_file = '/tmp/waypoints.yaml'
+            write_waypoints(self, req, waypoints_file)
+        else:
+            response.response.success = False
+            response.response.status_code = "Error: Empty waypoints"
+            self.get_logger().info('Error: Empty waypoints')
             return response
 
         self.launch_nodes(node='btree', waypoints=waypoints_file)
