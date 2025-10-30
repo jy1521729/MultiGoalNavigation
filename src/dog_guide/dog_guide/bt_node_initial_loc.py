@@ -1,19 +1,20 @@
 import py_trees
+import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from std_msgs.msg import String
 import time
 
 class InitialLocalization(py_trees.behaviour.Behaviour):
     """初始定位节点：检查定位协方差是否收敛"""
-    def __init__(self, name, node: Node, default_pose, tol=0.15, max_retry=3):
+    def __init__(self, name, node: Node, status_pub: rclpy.publisher.Publisher, tol=0.15, max_retry=3):
         super().__init__(name)
-        self.default_pose = default_pose
         self.tol = tol
         self.max_retry = max_retry
         self.node = node
         self._retry = 0
         self._sub = None
-        self._pub = None
+        self._pub = status_pub
         self._latest_cov = float('inf')
         self._latest_msg = None
 
@@ -28,9 +29,14 @@ class InitialLocalization(py_trees.behaviour.Behaviour):
         # self._latest_cov = msg.pose.covariance[0]   # σ_x²
         self._latest_msg = msg
 
+    def _publish_status(self, status: str):
+        msg = String(data=status)
+        self._pub.publish(msg)
+
     def initialise(self):
         self._retry = 0
         self._latest_cov = float('inf')
+        self._publish_status("localizating")
 
     def update(self):
         # 还没收到任何消息
@@ -48,6 +54,7 @@ class InitialLocalization(py_trees.behaviour.Behaviour):
         if x_var < self.tol:
             self.feedback_message += " → 满足阈值，定位完成"
             self.node.get_logger().info(self.feedback_message)
+            self._publish_status("localization_success")
             return py_trees.common.Status.SUCCESS
         else:
             self.feedback_message += " → 方差过大，继续等待"

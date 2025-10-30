@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'nav_server = nav_command.nav_server:main',
             'nav_client = nav_command.nav_client:main',
+            'parse_cloud_odom = nav_command.parse_cloud_odom:main',
         ],
     },
 )

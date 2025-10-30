@@ -11,3 +11,6 @@ string route_name         # 路线名称
 
 # 路径点数组
 Waypoint[] waypoints      # 路径点列表
+
+# 手动定位的坐标
+geometry_msgs/Pose initial_pose

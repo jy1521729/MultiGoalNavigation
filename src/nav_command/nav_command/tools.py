@@ -53,3 +53,19 @@ def write_waypoints(node, req, out_file):
     with open(out_file, 'w', encoding='utf-8') as file:
         yaml.dump(data, file, allow_unicode=True, default_flow_style=False)
         node.get_logger().info(f'waypoints 已写入 {out_file}')
+
+def write_waypoints_status(waypoints_file: str, waypoints_status: dict):
+    if not os.path.exists(waypoints_file):
+        raise FileNotFoundError(f'Waypoints file does not exist: {waypoints_file}')
+    
+    with open(waypoints_file, 'r', encoding='utf-8') as f:
+        data = yaml.safe_load(f)
+    
+    waypoints = data.get('waypoints', [])
+    for wp in waypoints:
+        wp_id = wp.get('id')
+        if wp_id is not None:
+            wp['status'] = waypoints_status[wp_id]
+    
+    with open(waypoints_file, 'w', encoding='utf-8') as f:
+        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)

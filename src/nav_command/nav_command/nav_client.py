@@ -34,18 +34,21 @@ class NavClient(Node):
         req.request.route_name = 'demo'
 
         wp = Waypoint()
+        wp.waypoint_id = 'WP1'
         wp.x, wp.y, wp.yaw = 3.0, 0.0, 0.0
         wp.voice.voice_id = 'v1'
         wp.voice.voice_content = '这是第 1 个点'
         wp.voice.play_delay = 3.0
 
         wp2 = Waypoint()
+        wp2.waypoint_id = 'WP2'
         wp2.x, wp2.y, wp2.yaw = 4.0, -3.0, 1.57
         wp2.voice.voice_id = 'v2'
         wp2.voice.voice_content = '这是第 2 个点'
         wp2.voice.play_delay = 2.0
 
         wp3 = Waypoint()
+        wp3.waypoint_id = 'WP3'
         wp3.x, wp3.y, wp3.yaw = 4.0, -10.0, -1.57
         wp3.voice.voice_id = 'v3'
         wp3.voice.voice_content = '这是第 3 个点'
@@ -58,7 +61,7 @@ class NavClient(Node):
         resp = future.result()
         self.get_logger().info(
             f'响应：accepted={resp.response.success}, '
-            f'status_code={resp.response.status_code}'
+            f'message={resp.response.message}'
         )
 
 
