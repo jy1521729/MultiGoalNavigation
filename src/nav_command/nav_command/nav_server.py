@@ -211,88 +211,61 @@ class NavServer(Node):
         return response
         
     def launch_nodes(self, node='all', waypoints='') -> bool:
-        try:
-            params = ''
-            if node == 'all':
-                self.get_logger().info('Launching all nodes...')
-            elif node == 'dog_control':
-                self.get_logger().info('Launching node dog_control...')
-                params = '1'
-            elif node == 'btree':
-                self.get_logger().info('Launching nodes btree...')
-                params = f'2 {waypoints}'
-            else:
-                self.get_logger().warn(f'Unknown node type: {node}')
-                return False
-            cmd = [
-                'bash', '-c', f'{self.current_working_dir}/launch_all.sh {params}'
-            ]
-            subprocess.Popen(cmd)
-            self.get_logger().info(f'{node} node started')
-
-            return True
-            
-        except Exception as e:
-            self.get_logger().error(f'Failed to launch all nodes: {str(e)}')
+        params = ''
+        if node == 'all':
+            msg = 'launch all nodes'
+        elif node == 'dog_control':
+            msg = 'launch node dog_control'
+            params = '1'
+        elif node == 'btree':
+            msg = 'launch node btree'
+            params = f'2 {waypoints}'
+        else:
+            self.get_logger().warn(f'Unknown node type: {node}')
             return False
+
+        return self.subprocess_popen(
+            command=f'{self.current_working_dir}/launch_all.sh {params}',
+            msg=msg
+        )
         
     def kill_nodes(self, node='') -> bool:
-        try:
-            if node == '':
-                self.get_logger().info('Killing all nodes...')
-            else:
-                self.get_logger().info(f'Killing node: {node}...')
-            cmd = [
-                'bash', '-c', f'{self.current_working_dir}/kill_all.sh {node}'
-            ]
-            subprocess.Popen(cmd)
-
-            return True
-            
-        except Exception as e:
-            self.get_logger().error(f'Failed to kill all nodes: {str(e)}')
-            return False
+        msg = 'kill all nodes' if node == '' else f'kill node {node}'
+        return self.subprocess_popen(
+            command=f'{self.current_working_dir}/kill_all.sh {node}',
+            msg=msg
+        )
         
-    def pub_initial_pose(self):
-        try:
-            self.get_logger().info('publish initial pose')
-            cmd = [
-                'bash', '-c', f'ros2 run fast_lio_localization publish_initial_pose.py 0 0 0 0 0 0'
-            ]
-            subprocess.Popen(cmd)
+    def pub_initial_pose(self) -> bool:
+        return self.subprocess_popen(
+            command='ros2 run fast_lio_localization publish_initial_pose.py 0 0 0 0 0 0',
+            msg='publish initial pose'
+        )
 
-            return True
-            
-        except Exception as e:
-            self.get_logger().error(f'Failed to publish initial pose: {str(e)}')
-            return False
-
-    def emergency_stop(self):
-        try:
-            self.get_logger().info('dog emergency_stop')
-            cmd = [
-                'bash', '-c', f'{self.current_working_dir}/stop.sh'
-            ]
-            subprocess.Popen(cmd)
-
-            return True
-            
-        except Exception as e:
-            self.get_logger().error(f'Failed to stop dog: {str(e)}')
-            return False
+    def emergency_stop(self) -> bool:
+        return self.subprocess_popen(
+            command=f'{self.current_working_dir}/stop.sh',
+            msg='emergency stop dog'
+        )
         
-    def cancel_goal(self):
+    def cancel_goal(self) -> bool:
+        return self.subprocess_popen(
+            command='ros2 service call /cancel_navigation std_srvs/srv/Trigger',
+            msg='cancel current goal'
+        )
+        
+    def subprocess_popen(self, command: str, msg: str) -> bool:
         try:
-            self.get_logger().info('Cancel current navigation goal...')
+            self.get_logger().info(f'{msg}...')
             cmd = [
-                'bash', '-c', f'ros2 service call /cancel_navigation std_srvs/srv/Trigger'
+                'bash', '-c', command
             ]
             subprocess.Popen(cmd)
 
             return True
             
         except Exception as e:
-            self.get_logger().error(f'Failed to cancel goal: {str(e)}')
+            self.get_logger().error(f'Failed to {msg}: {str(e)}')
             return False
 
     def handle_navigation_error(self, error_message: str):
