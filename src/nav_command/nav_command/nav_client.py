@@ -4,6 +4,8 @@ from rclpy.node import Node
 from rcl_interfaces.msg import ParameterDescriptor
 from custom_nav_interfaces.srv import NavigationExecute
 from custom_nav_interfaces.msg import NavigationRequest, Waypoint
+from nav_command.tools import load_waypoints
+import os
 
 
 class NavClient(Node):
@@ -15,6 +17,7 @@ class NavClient(Node):
             1001,
             ParameterDescriptor(description='API id for navigation request')
         )
+        self.declare_parameter('waypoints_file', '')
 
         self.cli = self.create_client(NavigationExecute, '/slam/navigation/execute')
         while not self.cli.wait_for_service(timeout_sec=1.0):
@@ -25,6 +28,13 @@ class NavClient(Node):
         self.get_logger().info(f'api_id={api_id}')
         self.send(api_id)
 
+    def get_waypoints(self):
+        waypoints_file = self.get_parameter('waypoints_file').value
+        waypoints = load_waypoints(waypoints_file, self)
+        if not waypoints:
+            return None
+        return waypoints
+
     def send(self, api_id: int):
         req = NavigationExecute.Request()
         req.request = NavigationRequest()
@@ -33,28 +43,24 @@ class NavClient(Node):
         req.request.route_id = 'R001'
         req.request.route_name = 'demo'
 
-        wp = Waypoint()
-        wp.waypoint_id = 'WP1'
-        wp.x, wp.y, wp.yaw = 3.0, 0.0, 0.0
-        wp.voice.voice_id = 'v1'
-        wp.voice.voice_content = '这是第 1 个点'
-        wp.voice.play_delay = 3.0
-
-        wp2 = Waypoint()
-        wp2.waypoint_id = 'WP2'
-        wp2.x, wp2.y, wp2.yaw = 4.0, -3.0, 1.57
-        wp2.voice.voice_id = 'v2'
-        wp2.voice.voice_content = '这是第 2 个点'
-        wp2.voice.play_delay = 2.0
-
-        wp3 = Waypoint()
-        wp3.waypoint_id = 'WP3'
-        wp3.x, wp3.y, wp3.yaw = 4.0, -10.0, -1.57
-        wp3.voice.voice_id = 'v3'
-        wp3.voice.voice_content = '这是第 3 个点'
-        wp3.voice.play_delay = 4.0
-
-        req.request.waypoints = [wp, wp2, wp3]
+        waypoints = self.get_waypoints() if api_id in [1011] else None
+        if waypoints is not None:
+            for pt in waypoints:
+                wp = Waypoint()
+                wp.waypoint_id = pt['id']
+                wp.x, wp.y, wp.yaw = pt['x'], pt['y'], pt['yaw']
+                wp.voice.voice_id = pt['voice']['voice_id']
+                wp.voice.voice_content = pt['voice']['voice_content']
+                wp.voice.play_delay = pt['voice']['play_delay']
+                if os.path.exists(pt['voice']['file_path']):
+                    with open(pt['voice']['file_path'], 'rb') as f:
+                        audio_data = f.read()
+                    wp.voice.has_audio_file = True
+                    wp.voice.audio_file_name = os.path.basename(pt['voice']['file_path'])
+                    wp.voice.audio_file_data = list(audio_data)
+                else:
+                    wp.voice.has_audio_file = False
+                req.request.waypoints.append(wp)
 
         future = self.cli.call_async(req)
         rclpy.spin_until_future_complete(self, future)
