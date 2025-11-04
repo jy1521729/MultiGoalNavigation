@@ -10,8 +10,8 @@ class PointCloudOdomParser(Node):
         super().__init__('pointcloud_odom_parser')
 
         # 订阅点云和里程计话题
-        self.create_subscription(PointCloud2, '/cloud_registered', self.pointcloud_callback, 10)
-        self.create_subscription(Odometry, '/Odometry', self.odom_callback, 10)
+        self.create_subscription(PointCloud2, '/cloud_in_map', self.pointcloud_callback, 10)
+        self.create_subscription(Odometry, '/localization', self.odom_callback, 10)
 
     def pointcloud_callback(self, msg: PointCloud2):
         # 解析点云中的每个点的坐标

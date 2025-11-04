@@ -1,40 +1,54 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_msgs.msg import String
+from geometry_msgs.msg import Pose
+from nav_msgs.msg import Odometry
+from tf_transformations import euler_from_quaternion
 from custom_nav_interfaces.msg import NavigationStatus
 from custom_nav_interfaces.srv import NavigationExecute
 from nav_command.tools import write_waypoints, write_waypoints_status
 import subprocess
 import os, time
 
+cbg1 = MutuallyExclusiveCallbackGroup()
+cbg2 = MutuallyExclusiveCallbackGroup()
+
 class NavServer(Node):
     def __init__(self):
         super().__init__('nav_server')
-        self.srv = self.create_service(NavigationExecute, '/slam/navigation/execute', self.nav_command_cb)
+        self.srv = self.create_service(NavigationExecute, '/slam/navigation/execute', self.cb_nav_command, callback_group=cbg1)
         self.current_working_dir= os.getcwd()
         self.get_logger().info(f"Current working directory: {self.current_working_dir}")
 
-        self.waypoints_status = {}
+        self.waypoints_status = {}        # waypoint_id: status
         self.waypoints_file = '/tmp/waypoints.yaml'
-
+        self.robot_pose = None            # pose in map frame
+        self.loc_status = ""
         self.current_status = NavigationStatus()
-        self.current_status.status = "idle"     # "idle", "starting", "running", "completed", "error", "emergency", "stopped"
+        self.reset_status()
+
+        self.sub_bt_status = self.create_subscription(String, '/bt_status', self.cb_bt_status, 10, callback_group=cbg1)
+        self.sub_loc_status = self.create_subscription(String, '/loc_status', self.cb_loc_status, 10, callback_group=cbg2)
+        self.sub_pose = self.create_subscription(Odometry, '/localization', self.cb_robot_pose, 10, callback_group=cbg2)
+
+        self.pub_status = self.create_publisher(NavigationStatus, '/navigation_status', 10)
+        self.timer = self.create_timer(2.0, self.publish_status)
+    
+    def reset_status(self):
+        self.current_status.status = "idle"     # "idle", "starting", "running", "completed", "error", "emergency"
         self.current_status.phase = ""          # "localizing", "navigating", "voice_playing"
         self.current_status.error_code = ""
         self.current_status.error_message = ""
         self.current_status.device_connect = True
         self.current_status.localization_ready = False
         self.current_status.navigation_ready = False
+        self.robot_pose = Pose()
+        self.loc_status = "not_ready"
 
-        self.sub_status = self.create_subscription(
-            String, '/bt_status',
-            self.status_cb, 10)
-
-        self.pub_status = self.create_publisher(NavigationStatus, '/navigation_status', 10)
-        self.timer = self.create_timer(2.0, self.publish_status)
-    
-    def nav_command_cb(self, request, response):
+    def cb_nav_command(self, request, response):
         req = request.request
         self.get_logger().info(f'收到指令: {req.api_id}')
         self.print_status()
@@ -44,26 +58,20 @@ class NavServer(Node):
                 case 1001:
                     return self.handle_start_navigation(request, response, is_continue=False)
                 case 1002:
-                    self.get_logger().info('紧急停止！')
                     return self.handle_stop_navigation(request, response)
                 case 1003:
-                    self.get_logger().info('解除急停')
                     return self.handle_dog_control(request, response)
                 case 1004:
-                    self.get_logger().info('继续导航')
                     return self.handle_start_navigation(request, response, is_continue=True)
                 case 1005:
-                    self.get_logger().info('获取当前导航状态')
                     return self.handle_status_request(request, response)
                 case 1011:
-                    self.get_logger().info('启动所有导航节点！')
                     return self.handle_launch_all(request, response)
                 case 1012:
-                    self.get_logger().info('关闭所有导航节点！')
                     return self.handle_kill_all(request, response)
-                case 1021: # TODO
+                case 1021:
                     return self.handle_relocalize(request, response)
-                case 1022: # TODO
+                case 1022:
                     return self.handle_relocalize(request, response)
                 case _:
                     response.response.success = False
@@ -77,11 +85,13 @@ class NavServer(Node):
 
         return response
     
-    def status_cb(self, msg):
+    def cb_bt_status(self, msg):
         self.current_status.phase = msg.data
         if msg.data == "finished":
             self.current_status.status = "completed"
-        elif msg.data == "localization_success":
+        elif msg.data == "localizing":
+            self.current_status.localization_ready = False
+        elif msg.data == "localization_ready":
             self.current_status.localization_ready = True
         elif msg.data.startswith("reached-"):
             waypoint_id = msg.data.split("-")[1]
@@ -91,6 +101,13 @@ class NavServer(Node):
             else:
                 self.get_logger().warn(f'Received reached status for unknown waypoint id: {waypoint_id}')
 
+    def cb_loc_status(self, msg):
+        self.loc_status = msg.data
+
+    def cb_robot_pose(self, msg):
+        if self.loc_status == "localization_success":
+            self.robot_pose = msg.pose.pose
+
     def handle_start_navigation(self, request, response, is_continue=False):
         """Handle start navigation command"""
         if self.current_status.navigation_ready == False:
@@ -98,9 +115,9 @@ class NavServer(Node):
             response.response.message = f"Navigation nodes not launched."
             self.print_response(response, log_level='warn')
             return response
-        if self.current_status.status in ["running", 'error']:
+        if self.current_status.status not in ["starting", 'completed']:
             response.response.success = False
-            response.response.message = f"Navigation already in progress."
+            response.response.message = f"Navigation status is [{self.current_status.status}], cannot start."
             self.print_response(response, log_level='warn')
             return response
 
@@ -122,6 +139,7 @@ class NavServer(Node):
     
     def handle_stop_navigation(self, request, response):
         """Handle stop navigation command"""
+        self.get_logger().info('紧急停止！')
         self.emergency_stop()
         time.sleep(0.1)
         self.kill_nodes(node='dog_control')
@@ -135,6 +153,7 @@ class NavServer(Node):
         return response
     
     def handle_dog_control(self, request, response):
+        self.get_logger().info('解除急停')
         if self.current_status.status != "emergency":
             response.response.success = False
             response.response.message = "Dog is not in emergency state"
@@ -150,6 +169,7 @@ class NavServer(Node):
 
     def handle_launch_all(self, request, response):
         """Handle launch all command"""
+        self.get_logger().info('启动所有导航节点！')
         if self.current_status.navigation_ready:
             response.response.success = False
             response.response.message = "Navigation nodes already launched"
@@ -178,12 +198,11 @@ class NavServer(Node):
     
     def handle_kill_all(self, request, response):
         """Handle kill all command"""
+        self.get_logger().info('关闭所有导航节点！')
         self.emergency_stop()
         time.sleep(1)
         self.kill_nodes()
-        self.current_status.status = "stopped"
-        self.current_status.navigation_ready = False
-        self.current_status.localization_ready = False
+        self.reset_status()
 
         response.response.success = True
         response.response.message = "Navigation process stopped successfully"
@@ -194,17 +213,34 @@ class NavServer(Node):
         """Handle launch all command"""
         if request.request.api_id == 1021:
             self.get_logger().info('自动定位')
+            self.pub_initial_pose(self.robot_pose)
         else:
             self.get_logger().info('手动定位')
-        self.pub_initial_pose()
+            self.pub_initial_pose(request.request.initial_pose)
         
-        response.response.success = True
-        response.response.message = "relocalizing"
+        self.loc_status = "not_ready"
+        response.response.success = False
+        response.response.message = "Localization timeout"
+
+        for _ in range(10):
+            time.sleep(1.0)
+            if self.loc_status == "localization_success":
+                response.response.success = True
+                response.response.message = "Localization successful"
+                break
+            elif self.loc_status == "localization_failed":
+                response.response.success = False
+                response.response.message = "Localization failed"
+                break
+            else:
+                self.get_logger().info('等待定位完成...')
+
         self.print_response(response)
         return response
 
     def handle_status_request(self, request, response):
         """Handle status request"""
+        self.get_logger().info('获取当前导航状态')
         response.response.success = True
         response.response.message = self.current_status.status
         self.print_response(response)
@@ -236,10 +272,15 @@ class NavServer(Node):
             msg=msg
         )
         
-    def pub_initial_pose(self) -> bool:
+    def pub_initial_pose(self, pose: Pose) -> bool:
+        x = pose.position.x
+        y = pose.position.y
+        ori = pose.orientation
+        quaternion = [ori.x, ori.y, ori.z, ori.w]
+        _, _, yaw = euler_from_quaternion(quaternion)
         return self.subprocess_popen(
-            command='ros2 run fast_lio_localization publish_initial_pose.py 0 0 0 0 0 0',
-            msg='publish initial pose'
+            command=f'ros2 run fast_lio_localization publish_initial_pose.py {x} {y} 0 0 0 {yaw}',
+            msg=f'publish initial pose x={x} y={y} yaw={yaw}'
         )
 
     def emergency_stop(self) -> bool:
@@ -300,8 +341,17 @@ class NavServer(Node):
 
 def main():
     rclpy.init()
-    rclpy.spin(NavServer())
-    rclpy.shutdown()
+    node = NavServer()
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        executor.shutdown()
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
